@@ -2,14 +2,15 @@
   "$schema": "https://raw.githubusercontent.com/bsmg/BSIPA-MetadataFileSchema/master/Schema.json",
   "id": "CustomMenuPointers",
   "name": "CustomMenuPointers",
-  "author": "Raine",
-  "version": "1.1.2",
-  "description": "This mod allows you to use saber and eventually menupointer files in the menu!",
-  "gameVersion": "1.40.8",
+  "author": "Kylon99, Raine, Dennoc",
+  "version": "1.2.0",
+  "description": "Use your selected Custom Sabers Lite saber as your menu pointers.",
+  "gameVersion": "1.45.3",
   "dependsOn": {
-    "BSIPA": "^4.3.6",
-    "BeatSaberMarkupLanguage": "^1.6.2",
-    "SiraUtil": "^3.2.1",
-    "SaberFactory":  "^2.5.5" 
+    "BSIPA": "^5.0.0",
+    "BeatSaberMarkupLanguage": "^1.12.0",
+    "SiraUtil": "^3.1.12",
+    "SabersCore": "^1.1.0",
+    "CustomSabersLite": "^1.0.4"
   }
 }

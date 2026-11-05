@@ -1,9 +1,7 @@
-﻿using System.Data.Common;
 using CustomMenuPointers.Configuration;
 using CustomMenuPointers.Installers;
 using IPA;
 using SiraUtil.Zenject;
-using SiraUtil.Tools.FPFC;
 using IPALogger = IPA.Logging.Logger;
 using IPA.Config.Stores;
 using Config = IPA.Config.Config;

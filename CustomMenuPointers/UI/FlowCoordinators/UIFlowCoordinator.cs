@@ -11,15 +11,13 @@ namespace CustomMenuPointers.UI.FlowCoordinators
     public class UIFlowCoordinator : FlowCoordinator
     {
         private MainFlowCoordinator _mainFlowCoordinator;
-        //private MenuPointerSelectView _menuPointerSelectView;
         private CMPSettingsView _cmpSettingsView;
         private SiraLog _siraLog;
 
         [Inject]
-        public void Construct(MainFlowCoordinator mainFlowCoordinator, /*MenuPointerSelectView menuPointerSelectView,*/ CMPSettingsView cmpSettingsView, SiraLog siraLog)
+        public void Construct(MainFlowCoordinator mainFlowCoordinator, CMPSettingsView cmpSettingsView, SiraLog siraLog)
         {
             _mainFlowCoordinator = mainFlowCoordinator;
-            //_menuPointerSelectView = menuPointerSelectView;
             _cmpSettingsView = cmpSettingsView;
             _siraLog = siraLog;
         }
@@ -32,7 +30,7 @@ namespace CustomMenuPointers.UI.FlowCoordinators
                 {
                     SetTitle("Menu Pointers");
                     showBackButton = true;
-                    ProvideInitialViewControllers(/*_menuPointerSelectView,*/ _cmpSettingsView);
+                    ProvideInitialViewControllers(_cmpSettingsView);
                 }
             }
             catch (Exception ex)

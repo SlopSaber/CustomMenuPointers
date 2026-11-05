@@ -1,121 +1,208 @@
 ﻿using System;
+using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 using CustomMenuPointers.Configuration;
-using SaberFactory;
-using SaberFactory.Instances;
-using SiraUtil.Tools.FPFC;
+using CustomSabersLite;
+using SabersCore.Models;
+using SabersCore.Services;
+using SiraUtil.Logging;
 using UnityEngine;
 using Zenject;
-using Object = UnityEngine.Object;
 
 namespace CustomMenuPointers.Managers
 {
     internal class CMPManager : IInitializable, IDisposable
     {
-        // Fields for injection
-        
-        private readonly MenuSaberProvider _menuSaberProvider;
+        private static readonly string[] HandleRendererNames = { "Glowing", "Normal", "FakeGlow0", "FakeGlow1" };
+
+        private readonly ISaberInstanceFactory _saberInstanceFactory;
         private readonly PlayerDataModel _playerDataModel;
         private readonly MenuPlayerController _menuPlayerController;
         private readonly PluginConfig _config;
-        private ColorScheme _colorScheme;
-        private SaberInstance _leftSaber;
-        private SaberInstance _rightSaber;
-        private readonly IFPFCSettings _fpfc;
+        private readonly SiraLog _log;
+        private readonly List<Renderer> _handleRenderers = new List<Renderer>();
+
+        private Transform _leftHandle;
+        private Transform _rightHandle;
+        private SaberInstanceSet _sabers;
+        private CancellationTokenSource _loading;
 
         public CMPManager(
-            MenuSaberProvider menuSaberProvider,
+            ISaberInstanceFactory saberInstanceFactory,
             PlayerDataModel playerDataModel,
             MenuPlayerController menuPlayerController,
-            PluginConfig config, IFPFCSettings fpfc)
+            PluginConfig config,
+            SiraLog log)
         {
-            _menuSaberProvider = menuSaberProvider;
+            _saberInstanceFactory = saberInstanceFactory;
             _playerDataModel = playerDataModel;
             _menuPlayerController = menuPlayerController;
             _config = config;
-            _fpfc = fpfc;
+            _log = log;
         }
 
-        public async void Initialize()
+        public void Initialize()
         {
-            _menuSaberProvider.OnSaberVisibilityRequested += OnSaberVisibilityRequested;
-            _colorScheme = _playerDataModel.playerData.colorSchemesSettings.GetSelectedColorScheme();
-            await ToggleCustomMenuPointers(_config.CmpEnabled);
-        }
+            _leftHandle = FindHandle(_menuPlayerController.leftController);
+            _rightHandle = FindHandle(_menuPlayerController.rightController);
 
-        public async Task ToggleCustomMenuPointers(bool toggle)
-        {
-            ToggleHandles(!toggle);
-            if (toggle) await CreateSaberColorScheme();
-            else DestroySaber();
-        }
-        
-        public void DestroyMeshOnly(bool visible)
-        {
-            ToggleHandle(_menuPlayerController.leftController, !visible);
-            ToggleHandle(_menuPlayerController.rightController, !visible);
-        }
-        
-        public async Task CreateSaberColorScheme()
-        {
-            if (_leftSaber != null && _rightSaber != null) return;
-            if (_fpfc.Enabled) return;
-            {
-                _leftSaber = await _menuSaberProvider.CreateSaber(_menuPlayerController.leftController.transform, SaberType.SaberA, _colorScheme.saberAColor, true);
-                _rightSaber = await _menuSaberProvider.CreateSaber(_menuPlayerController.rightController.transform, SaberType.SaberB, _colorScheme.saberBColor, true);
-                DestroyCollider(_leftSaber.GameObject);
-                DestroyCollider(_rightSaber.GameObject);
-            }
-        }
-
-        private void DestroyCollider(GameObject gameObject)
-        {
-            foreach (Collider collider in gameObject.GetComponentsInChildren<Collider>())
-            {
-                Object.Destroy(collider);
-            }
-        }
-
-        private void DestroySaber()
-        {
-            if (_leftSaber == null || _rightSaber == null) return;
-                _leftSaber.Destroy();
-                _rightSaber.Destroy();
-                _leftSaber = null;
-                _rightSaber = null;
-        }
-
-        private void ToggleHandles(bool visible)
-        {
-            ToggleHandle(_menuPlayerController.leftController, visible);
-            ToggleHandle(_menuPlayerController.rightController, visible);
-        }
-
-        private void ToggleHandle(VRController controller, bool visible)
-        {
-            var handle = controller.transform.Find("MenuHandle");
-            if (handle == null) return;
-                handle.gameObject.SetActive(visible);
-        }
-
-        public async void ReloadModel()
-        {
-            if (!_config.CmpEnabled) return;
-                DestroySaber();
-            await CreateSaberColorScheme();
-        }
-
-        private void OnSaberVisibilityRequested(bool visible)
-        {
-            if (_leftSaber == null && _rightSaber == null) return;
-            _leftSaber?.GameObject.SetActive(visible);
-            _rightSaber?.GameObject.SetActive(visible);
-            ToggleHandles(!visible);
+            SaberSelection.SelectedSaberChanged += OnSelectedSaberChanged;
+            SaberSelection.HeldPreviewChanged += OnHeldPreviewChanged;
+            _ = Reload();
         }
 
         public void Dispose()
         {
-            _menuSaberProvider.OnSaberVisibilityRequested -= OnSaberVisibilityRequested;
+            SaberSelection.SelectedSaberChanged -= OnSelectedSaberChanged;
+            SaberSelection.HeldPreviewChanged -= OnHeldPreviewChanged;
+            CancelLoading();
+            DestroySabers();
+        }
+
+        public Task SetEnabled(bool enabled)
+        {
+            _config.CmpEnabled = enabled;
+            return Reload();
+        }
+
+        public async Task Reload()
+        {
+            CancelLoading();
+            DestroySabers();
+
+            var hash = SaberSelection.SelectedSaberHash;
+            if (!_config.CmpEnabled || hash == null || _leftHandle == null || _rightHandle == null)
+            {
+                UpdateVisibility();
+                return;
+            }
+
+            var loading = _loading = new CancellationTokenSource();
+            SaberInstanceSet sabers;
+            try
+            {
+                sabers = await _saberInstanceFactory.CreateSaberSet(hash, loading.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
+            catch (Exception ex)
+            {
+                _log.Error($"Could not create menu pointers for saber {hash}");
+                _log.Error(ex);
+                UpdateVisibility();
+                return;
+            }
+
+            if (loading.IsCancellationRequested || _loading != loading)
+            {
+                sabers.Dispose();
+                return;
+            }
+
+            _sabers = sabers;
+            Attach(sabers.LeftSaber, _leftHandle);
+            Attach(sabers.RightSaber, _rightHandle);
+            RefreshColors();
+            UpdateVisibility();
+        }
+
+        public void RefreshColors()
+        {
+            if (_sabers == null)
+            {
+                return;
+            }
+
+            var colorScheme = _playerDataModel.playerData.colorSchemesSettings.GetSelectedColorScheme();
+            _sabers.LeftSaber?.SetColorScheme(colorScheme);
+            _sabers.RightSaber?.SetColorScheme(colorScheme);
+        }
+
+        private static Transform FindHandle(VRController controller) =>
+            controller == null ? null : controller.transform.Find("MenuHandle");
+
+        private static void Attach(ISaber saber, Transform handle)
+        {
+            if (saber == null)
+            {
+                return;
+            }
+
+            saber.SetParent(handle);
+            foreach (var collider in saber.GameObject.GetComponentsInChildren<Collider>(true))
+            {
+                collider.enabled = false;
+            }
+        }
+
+        private void OnSelectedSaberChanged(string hash) => _ = Reload();
+
+        private void OnHeldPreviewChanged(bool visible) => UpdateVisibility();
+
+        private void UpdateVisibility()
+        {
+            var showSabers = _sabers != null && !SaberSelection.HeldPreviewVisible;
+            _sabers?.SetActive(showSabers);
+
+            // Custom Sabers Lite restores the handle renderers when its held preview closes.
+            if (SaberSelection.HeldPreviewVisible)
+            {
+                return;
+            }
+
+            CollectHandleRenderers();
+            foreach (var renderer in _handleRenderers)
+            {
+                renderer.enabled = !showSabers;
+            }
+        }
+
+        private void CollectHandleRenderers()
+        {
+            _handleRenderers.RemoveAll(r => r == null);
+            if (_handleRenderers.Count > 0)
+            {
+                return;
+            }
+
+            foreach (var handle in new[] { _leftHandle, _rightHandle })
+            {
+                if (handle == null)
+                {
+                    continue;
+                }
+
+                foreach (var name in HandleRendererNames)
+                {
+                    var child = handle.Find(name);
+                    var renderer = child == null ? null : child.GetComponent<Renderer>();
+                    if (renderer != null)
+                    {
+                        _handleRenderers.Add(renderer);
+                    }
+                }
+            }
+        }
+
+        private void CancelLoading()
+        {
+            if (_loading == null)
+            {
+                return;
+            }
+
+            _loading.Cancel();
+            _loading.Dispose();
+            _loading = null;
+        }
+
+        private void DestroySabers()
+        {
+            _sabers?.Dispose();
+            _sabers = null;
         }
     }
 }

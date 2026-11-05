@@ -1,11 +1,7 @@
-﻿using System.Text;
-using SiraUtil.Tools;
 using BeatSaberMarkupLanguage.Attributes;
 using BeatSaberMarkupLanguage.ViewControllers;
 using CustomMenuPointers.Configuration;
 using CustomMenuPointers.Managers;
-using CustomMenuPointers.UI;
-using SiraUtil.Logging;
 using Zenject;
 
 namespace CustomMenuPointers.UI
@@ -15,47 +11,29 @@ namespace CustomMenuPointers.UI
     public class CMPSettingsView : BSMLAutomaticViewController
     {
         private CMPManager _cmpManager;
-        private SiraLog _siraLog;
         private PluginConfig _config;
 
         [Inject]
-        internal void Construct(SiraLog siraLog, CMPManager cmpManager, PluginConfig config)
+        internal void Construct(CMPManager cmpManager, PluginConfig config)
         {
-            _siraLog = siraLog;
             _cmpManager = cmpManager;
             _config = config;
-        }
-
-        private async void ToggleCmp(bool enableCmp)
-        {
-            _config.CmpEnabled = enableCmp;
-            await _cmpManager.ToggleCustomMenuPointers(enableCmp);
         }
 
         [UIValue("cmp-enabled")]
         private bool CmpEnabled
         {
             get => _config.CmpEnabled;
-            set => ToggleCmp(value);
-        }
-
-        [UIValue("sf-pointer")]
-        private bool UseSfPointer
-        {
-            get => _config.UseSfPointer;
-            set => _config.UseSfPointer = value;
+            set => _ = _cmpManager.SetEnabled(value);
         }
 
         [UIAction("reload")]
-        private void Reload()
-        {
-            _cmpManager.ReloadModel();
-        }
+        private void Reload() => _ = _cmpManager.Reload();
 
-        [UIAction("removeMesh")]
-        private void RemoveMesh()
+        protected override void DidActivate(bool firstActivation, bool addedToHierarchy, bool screenSystemEnabling)
         {
-            _cmpManager?.ToggleCustomMenuPointers(false);
+            base.DidActivate(firstActivation, addedToHierarchy, screenSystemEnabling);
+            _cmpManager.RefreshColors();
         }
     }
 }
