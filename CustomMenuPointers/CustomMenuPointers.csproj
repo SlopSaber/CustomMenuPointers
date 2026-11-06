@@ -23,6 +23,7 @@
     <Reference Include="GameplayCore" Private="false" />
     <Reference Include="HMLib" Private="false" />
     <Reference Include="HMUI" Private="false" />
+    <Reference Include="SaberTrail" Private="false" />
     <Reference Include="IPA.Loader" Private="false" />
     <Reference Include="BSML" Private="false" />
     <Reference Include="SiraUtil" Private="false" />

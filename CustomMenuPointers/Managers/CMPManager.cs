@@ -4,8 +4,10 @@ using System.Threading;
 using System.Threading.Tasks;
 using CustomMenuPointers.Configuration;
 using CustomSabersLite;
+using SabersCore.Components;
 using SabersCore.Models;
 using SabersCore.Services;
+using SabersCore.Utilities.Common;
 using SiraUtil.Logging;
 using UnityEngine;
 using Zenject;
@@ -15,8 +17,10 @@ namespace CustomMenuPointers.Managers
     internal class CMPManager : IInitializable, IDisposable
     {
         private static readonly string[] HandleRendererNames = { "Glowing", "Normal", "FakeGlow0", "FakeGlow1" };
+        private static readonly TrailSettings DefaultTrailSettings = new TrailSettings(false, false, 1f, false, 1f);
 
         private readonly ISaberInstanceFactory _saberInstanceFactory;
+        private readonly ITrailFactory _trailFactory;
         private readonly PlayerDataModel _playerDataModel;
         private readonly MenuPlayerController _menuPlayerController;
         private readonly PluginConfig _config;
@@ -26,16 +30,19 @@ namespace CustomMenuPointers.Managers
         private Transform _leftHandle;
         private Transform _rightHandle;
         private SaberInstanceSet _sabers;
+        private CustomSaberTrail[] _trails = Array.Empty<CustomSaberTrail>();
         private CancellationTokenSource _loading;
 
         public CMPManager(
             ISaberInstanceFactory saberInstanceFactory,
+            ITrailFactory trailFactory,
             PlayerDataModel playerDataModel,
             MenuPlayerController menuPlayerController,
             PluginConfig config,
             SiraLog log)
         {
             _saberInstanceFactory = saberInstanceFactory;
+            _trailFactory = trailFactory;
             _playerDataModel = playerDataModel;
             _menuPlayerController = menuPlayerController;
             _config = config;
@@ -105,6 +112,7 @@ namespace CustomMenuPointers.Managers
             _sabers = sabers;
             Attach(sabers.LeftSaber, _leftHandle);
             Attach(sabers.RightSaber, _rightHandle);
+            AddTrails(sabers);
             RefreshColors();
             UpdateVisibility();
         }
@@ -119,6 +127,39 @@ namespace CustomMenuPointers.Managers
             var colorScheme = _playerDataModel.playerData.colorSchemesSettings.GetSelectedColorScheme();
             _sabers.LeftSaber?.SetColorScheme(colorScheme);
             _sabers.RightSaber?.SetColorScheme(colorScheme);
+            foreach (var trail in _trails)
+            {
+                if (trail != null)
+                {
+                    trail.SetColor(colorScheme);
+                }
+            }
+        }
+
+        private void AddTrails(SaberInstanceSet sabers)
+        {
+            var left = AddTrails(sabers.LeftSaber, sabers.LeftTrails, SaberType.SaberA);
+            var right = AddTrails(sabers.RightSaber, sabers.RightTrails, SaberType.SaberB);
+            _trails = new CustomSaberTrail[left.Length + right.Length];
+            left.CopyTo(_trails, 0);
+            right.CopyTo(_trails, left.Length);
+        }
+
+        private CustomSaberTrail[] AddTrails(ISaber saber, ITrailData[] trails, SaberType saberType)
+        {
+            if (saber == null)
+            {
+                return Array.Empty<CustomSaberTrail>();
+            }
+
+            if (trails == null || trails.Length == 0)
+            {
+                trails = new ITrailData[] { _trailFactory.CreateDefaultTrailData(saberType) };
+            }
+
+            var instances = _trailFactory.AddTrailsTo(saber, trails, 1f);
+            instances.ConfigureTrails(DefaultTrailSettings);
+            return instances;
         }
 
         private static Transform FindHandle(VRController controller) =>
@@ -203,6 +244,7 @@ namespace CustomMenuPointers.Managers
         {
             _sabers?.Dispose();
             _sabers = null;
+            _trails = Array.Empty<CustomSaberTrail>();
         }
     }
 }
